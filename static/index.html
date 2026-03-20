@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>내 목소리 TTS</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0f0f13;
+      font-family: 'Segoe UI', sans-serif;
+      color: #e8e8f0;
+    }
+
+    .card {
+      background: #1a1a24;
+      border: 1px solid #2a2a38;
+      border-radius: 16px;
+      padding: 40px;
+      width: 520px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+    }
+
+    h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #c4b5fd;
+      letter-spacing: -0.3px;
+    }
+
+    label {
+      font-size: 13px;
+      color: #9090b0;
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .field { display: flex; flex-direction: column; }
+
+    select, textarea {
+      background: #12121c;
+      border: 1px solid #2a2a3a;
+      border-radius: 8px;
+      color: #e8e8f0;
+      padding: 10px 12px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    select:focus, textarea:focus {
+      border-color: #7c5cfc;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 110px;
+      line-height: 1.6;
+    }
+
+    .upload-area {
+      border: 1px dashed #3a3a50;
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .upload-area:hover {
+      border-color: #7c5cfc;
+      background: #1e1e2e;
+    }
+
+    .upload-area input { display: none; }
+
+    .upload-area p { font-size: 13px; color: #7070a0; margin-top: 4px; }
+    .upload-area .icon { font-size: 28px; margin-bottom: 6px; }
+
+    .lang-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .lang-row select { flex: 1; }
+
+    button {
+      background: #7c5cfc;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    button:hover { background: #6a4de0; }
+    button:active { transform: scale(0.98); }
+    button:disabled { background: #3a3a50; cursor: not-allowed; }
+
+    .status {
+      font-size: 13px;
+      color: #7070a0;
+      text-align: center;
+      min-height: 18px;
+    }
+
+    .status.error { color: #f87171; }
+    .status.success { color: #6ee7b7; }
+
+    audio {
+      width: 100%;
+      border-radius: 8px;
+    }
+
+    .result { display: flex; flex-direction: column; gap: 10px; }
+
+    .dl-btn {
+      background: #1e1e2e;
+      border: 1px solid #2a2a3a;
+      color: #c4b5fd;
+      font-size: 13px;
+      padding: 8px 12px;
+      text-align: center;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+
+    .dl-btn:hover { background: #2a2a3a; }
+
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid #ffffff44;
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>🎙️ 내 목소리 TTS</h1>
+
+  <!-- 목소리 업로드 -->
+  <div class="field">
+    <label>목소리 샘플 업로드 <span style="color:#5050a0">(wav / mp3 / flac / m4a, 6초 이상 권장)</span></label>
+    <div class="upload-area" onclick="document.getElementById('voiceFile').click()">
+      <div class="icon">📂</div>
+      <strong id="uploadLabel">파일 선택하기</strong>
+      <p>클릭해서 목소리 파일 업로드</p>
+      <input type="file" id="voiceFile" accept=".wav,.mp3,.flac,.m4a" onchange="handleUpload()" />
+    </div>
+  </div>
+
+  <!-- 목소리 선택 -->
+  <div class="field">
+    <label>저장된 목소리 선택</label>
+    <select id="voiceSelect">
+      <option value="">-- 목소리를 선택하세요 --</option>
+    </select>
+  </div>
+
+  <!-- 참고 텍스트 -->
+  <div class="field">
+    <label>샘플 음성의 내용 <span style="color:#5050a0">(선택사항 — 비우면 자동 인식)</span></label>
+    <textarea id="refText" placeholder="목소리 샘플 파일에서 말하는 내용을 적어주세요. 비워도 됩니다." style="min-height:60px"></textarea>
+  </div>
+
+  <!-- 텍스트 입력 -->
+  <div class="field">
+    <label>변환할 텍스트</label>
+    <textarea id="textInput" placeholder="여기에 읽어줄 텍스트를 입력하세요..."></textarea>
+  </div>
+
+  <button id="generateBtn" onclick="generate()">음성 생성하기</button>
+
+  <div class="status" id="status"></div>
+
+  <div class="result" id="result" style="display:none">
+    <audio id="audioPlayer" controls></audio>
+    <a id="downloadLink" class="dl-btn" download>⬇️ 다운로드</a>
+  </div>
+</div>
+
+<script>
+  async function loadVoices() {
+    const res = await fetch('/voices');
+    const data = await res.json();
+    const sel = document.getElementById('voiceSelect');
+    sel.innerHTML = '<option value="">-- 목소리를 선택하세요 --</option>';
+    data.voices.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v; opt.textContent = v;
+      sel.appendChild(opt);
+    });
+  }
+
+  async function handleUpload() {
+    const file = document.getElementById('voiceFile').files[0];
+    if (!file) return;
+
+    document.getElementById('uploadLabel').textContent = file.name;
+    setStatus('업로드 중...', '');
+
+    const form = new FormData();
+    form.append('file', file);
+
+    const res = await fetch('/upload-voice', { method: 'POST', body: form });
+    if (res.ok) {
+      setStatus('업로드 완료!', 'success');
+      await loadVoices();
+      document.getElementById('voiceSelect').value = file.name;
+    } else {
+      const err = await res.json();
+      setStatus(err.detail || '업로드 실패', 'error');
+    }
+  }
+
+  async function generate() {
+    const text = document.getElementById('textInput').value.trim();
+    const voice = document.getElementById('voiceSelect').value;
+    const refText = document.getElementById('refText').value.trim();
+
+    if (!text) return setStatus('텍스트를 입력해주세요.', 'error');
+    if (!voice) return setStatus('목소리 파일을 선택해주세요.', 'error');
+
+    const btn = document.getElementById('generateBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>생성 중...';
+    document.getElementById('result').style.display = 'none';
+    setStatus('모델이 음성을 생성하고 있어요. 잠깐만요...', '');
+
+    const form = new FormData();
+    form.append('text', text);
+    form.append('voice_file', voice);
+    form.append('ref_text', refText);
+
+    try {
+      const res = await fetch('/generate', { method: 'POST', body: form });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || '생성 실패');
+      }
+      const data = await res.json();
+      const url = `/download/${data.output}`;
+
+      document.getElementById('audioPlayer').src = url;
+      document.getElementById('downloadLink').href = url;
+      document.getElementById('downloadLink').download = data.output;
+      document.getElementById('result').style.display = 'flex';
+      setStatus('완료!', 'success');
+    } catch (e) {
+      setStatus(e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '음성 생성하기';
+    }
+  }
+
+  function setStatus(msg, type) {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = 'status ' + type;
+  }
+
+  loadVoices();
+</script>
+</body>
+</html>
