@@ -1,7 +1,7 @@
 fastapi
 uvicorn[standard]
 python-multipart
-kokoro>=0.9.2
+edge-tts
 soundfile
 numpy
 rvc-python

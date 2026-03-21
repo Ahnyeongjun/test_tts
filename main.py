@@ -15,32 +15,47 @@ MODELS_DIR = Path("models")
 for d in (VOICES_DIR, OUTPUTS_DIR, MODELS_DIR):
     d.mkdir(exist_ok=True)
 
-SAMPLE_RATE = 24000  # kokoro default
+SAMPLE_RATE = 24000
 
 tts_pipeline = None
 rvc_model = None
 training_status = {"status": "idle", "message": "학습 전"}
 
 
-# ──────────────────────────── TTS ────────────────────────────
+# ──────────────────────────── TTS (edge-tts) ────────────────────────────
 
-def get_tts():
-    global tts_pipeline
-    if tts_pipeline is None:
-        from kokoro import KPipeline
-        tts_pipeline = KPipeline(lang_code="k")
-    return tts_pipeline
+async def edge_tts_generate(text: str, voice: str, rate: str) -> np.ndarray:
+    import asyncio
+    import edge_tts
+    import io
 
+    communicate = edge_tts.Communicate(text, voice, rate=rate)
+    mp3_buf = io.BytesIO()
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            mp3_buf.write(chunk["data"])
 
-def kokoro_generate(text: str, voice: str, speed: float) -> np.ndarray:
-    pipeline = get_tts()
-    chunks = []
-    for _, _, audio in pipeline(text, voice=voice, speed=speed):
-        if audio is not None and len(audio) > 0:
-            chunks.append(np.array(audio, dtype=np.float32))
-    if not chunks:
-        raise RuntimeError("Kokoro가 오디오를 생성하지 못했어요.")
-    return np.concatenate(chunks)
+    mp3_buf.seek(0)
+    if mp3_buf.getbuffer().nbytes == 0:
+        raise RuntimeError("edge-tts가 오디오를 생성하지 못했어요.")
+
+    # mp3 → float32 numpy (24kHz)
+    import subprocess, tempfile, os
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+        f.write(mp3_buf.read())
+        mp3_path = f.name
+    wav_path = mp3_path.replace(".mp3", ".wav")
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", mp3_path, "-ar", str(SAMPLE_RATE), "-ac", "1", wav_path],
+            check=True, capture_output=True,
+        )
+        audio, _ = sf.read(wav_path, dtype="float32")
+    finally:
+        os.unlink(mp3_path)
+        if os.path.exists(wav_path):
+            os.unlink(wav_path)
+    return audio
 
 
 # ──────────────────────────── RVC ────────────────────────────
@@ -189,7 +204,7 @@ async def start_train(
 @app.post("/generate")
 async def generate(
     text: str = Form(...),
-    voice: str = Form(default="kf_bella"),
+    voice: str = Form(default="ko-KR-SunHiNeural"),
     speed: float = Form(default=1.0),
     use_rvc: bool = Form(default=True),
     f0_key: int = Form(default=0),
@@ -197,7 +212,10 @@ async def generate(
     if not text.strip():
         raise HTTPException(400, "텍스트를 입력해주세요.")
 
-    audio = kokoro_generate(text.strip(), voice=voice, speed=speed)
+    # speed → edge-tts rate 문자열 변환 (+0%, +20%, -10% 형태)
+    rate_pct = int((speed - 1.0) * 100)
+    rate_str = f"+{rate_pct}%" if rate_pct >= 0 else f"{rate_pct}%"
+    audio = await edge_tts_generate(text.strip(), voice=voice, rate=rate_str)
 
     if use_rvc and (MODELS_DIR / "voice.pth").exists():
         audio = rvc_convert(audio, f0_up_key=f0_key)
