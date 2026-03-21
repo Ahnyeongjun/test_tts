@@ -16,6 +16,8 @@ for d in (VOICES_DIR, OUTPUTS_DIR, MODELS_DIR):
     d.mkdir(exist_ok=True)
 
 SAMPLE_RATE = 24000
+RVC_DIR = Path("/rvc")
+RVC_EXP_NAME = "myvoice"
 
 tts_pipeline = None
 rvc_model = None
@@ -94,60 +96,116 @@ def rvc_convert(audio: np.ndarray, f0_up_key: int = 0) -> np.ndarray:
 
 # ──────────────────────────── 학습 ────────────────────────────
 
+def _set_status(msg: str, status: str = "running"):
+    training_status["status"] = status
+    training_status["message"] = msg
+
+
+def _ensure_pretrained_models():
+    """학습에 필요한 사전학습 모델 다운로드 (없을 때만)."""
+    import subprocess
+    assets = RVC_DIR / "assets"
+    downloads = {
+        assets / "hubert" / "hubert_base.pt":
+            "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/main/hubert_base.pt",
+        assets / "pretrained_v2" / "f0G40k.pth":
+            "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/main/pretrained_v2/f0G40k.pth",
+        assets / "pretrained_v2" / "f0D40k.pth":
+            "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/main/pretrained_v2/f0D40k.pth",
+        assets / "rmvpe" / "rmvpe.pt":
+            "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/main/rmvpe.pt",
+    }
+    for dest, url in downloads.items():
+        if not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            _set_status(f"다운로드 중: {dest.name}")
+            subprocess.run(["wget", "-q", "-O", str(dest), url], check=True)
+
+
 def _run_training(voice_files: list[str]):
     global training_status, rvc_model
-    rvc_model = None  # 기존 모델 초기화
-    training_status = {"status": "running", "message": "오디오 전처리 중..."}
+    import subprocess, os, shutil
+    rvc_model = None
+    training_status = {"status": "running", "message": "시작 중..."}
     try:
-        # 선택된 voice 파일 모두 합치기 (ffmpeg로 wav 변환 후 읽기)
-        import subprocess, tempfile, os
-        audio_chunks = []
+        # ── 1. 오디오를 40kHz wav로 변환해서 trainset 디렉토리에 저장 ──
+        exp_dir = RVC_DIR / "logs" / RVC_EXP_NAME
+        trainset_dir = exp_dir / "trainset"
+        trainset_dir.mkdir(parents=True, exist_ok=True)
+
+        total_sec = 0.0
         for fname in voice_files:
-            path = VOICES_DIR / fname
-            if not path.exists():
+            src = VOICES_DIR / fname
+            if not src.exists():
                 continue
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                tmp_wav = tmp.name
-            try:
-                subprocess.run(
-                    ["ffmpeg", "-y", "-i", str(path), "-ar", str(SAMPLE_RATE), "-ac", "1", tmp_wav],
-                    check=True, capture_output=True,
-                )
-                data, _ = sf.read(tmp_wav, dtype="float32")
-            finally:
-                if os.path.exists(tmp_wav):
-                    os.unlink(tmp_wav)
-            audio_chunks.append(data)
+            dst = trainset_dir / (src.stem + ".wav")
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", str(src), "-ar", "40000", "-ac", "1", str(dst)],
+                check=True, capture_output=True,
+            )
+            data, _ = sf.read(str(dst), dtype="float32")
+            total_sec += len(data) / 40000
 
-        if not audio_chunks:
-            training_status = {"status": "error", "message": "학습할 오디오 파일이 없어요."}
-            return
-
-        combined = np.concatenate(audio_chunks)
-        combined_path = MODELS_DIR / "training_audio.wav"
-        sf.write(str(combined_path), combined, SAMPLE_RATE)
-
-        total_sec = len(combined) / SAMPLE_RATE
+        if total_sec == 0:
+            return _set_status("학습할 오디오 파일이 없어요.", "error")
         if total_sec < 30:
-            training_status = {
-                "status": "error",
-                "message": f"학습 음성이 너무 짧아요 ({total_sec:.0f}초). 최소 30초 이상 필요합니다.",
-            }
-            return
+            return _set_status(f"음성이 너무 짧아요 ({total_sec:.0f}초). 30초 이상 필요합니다.", "error")
 
-        training_status = {"status": "running", "message": f"RVC 학습 중... ({total_sec:.0f}초 분량)"}
+        # ── 2. 사전학습 모델 확보 ──
+        _set_status("사전학습 모델 확인 중...")
+        _ensure_pretrained_models()
 
-        from rvc_python.train import train_model
-        train_model(
-            model_name="voice",
-            audio_files=[str(combined_path)],
-            save_dir=str(MODELS_DIR),
-            epochs=100,
-            sample_rate=SAMPLE_RATE,
+        # ── 3. 오디오 전처리 ──
+        _set_status(f"오디오 전처리 중... ({total_sec:.0f}초 분량)")
+        subprocess.run(
+            ["python", "trainset_preprocess_pipeline_print.py",
+             str(trainset_dir), "40000", "2", str(exp_dir), "False", "3.0"],
+            check=True, cwd=str(RVC_DIR), capture_output=True,
         )
-        training_status = {"status": "done", "message": "학습 완료! 이제 음성 생성에 사용돼요."}
+
+        # ── 4. F0 추출 ──
+        _set_status("F0(피치) 추출 중...")
+        subprocess.run(
+            ["python", "extract_f0_print.py", str(exp_dir), "2", "rmvpe"],
+            check=True, cwd=str(RVC_DIR), capture_output=True,
+        )
+
+        # ── 5. HuBERT 특징 추출 ──
+        _set_status("HuBERT 특징 추출 중...")
+        subprocess.run(
+            ["python", "extract_feature_print.py",
+             "cuda:0", "1", "0", "0", str(exp_dir), "v2"],
+            check=True, cwd=str(RVC_DIR), capture_output=True,
+        )
+
+        # ── 6. 학습 ──
+        _set_status("학습 중... (GPU에 따라 10~60분 소요)")
+        assets = RVC_DIR / "assets" / "pretrained_v2"
+        subprocess.run(
+            ["python", "train_nsf_sim.py",
+             "-e", RVC_EXP_NAME, "-sr", "40k", "-f0", "1",
+             "-bs", "4", "-g", "0", "-te", "200", "-se", "50",
+             "-pg", str(assets / "f0G40k.pth"),
+             "-pd", str(assets / "f0D40k.pth"),
+             "-l", "1", "-c", "0", "-sw", "1", "-v", "v2"],
+            check=True, cwd=str(RVC_DIR), capture_output=True,
+        )
+
+        # ── 7. 결과 모델 복사 ──
+        weights = sorted((RVC_DIR / "weights").glob(f"{RVC_EXP_NAME}*.pth"))
+        if not weights:
+            return _set_status("학습 완료됐지만 모델 파일을 찾지 못했어요.", "error")
+        shutil.copy(str(weights[-1]), str(MODELS_DIR / "voice.pth"))
+
+        index_files = sorted(exp_dir.glob("added_*.index"))
+        if index_files:
+            shutil.copy(str(index_files[-1]), str(MODELS_DIR / "voice.index"))
+
+        _set_status("학습 완료! 이제 음성 생성에 사용돼요.", "done")
+    except subprocess.CalledProcessError as e:
+        _set_status(f"스크립트 오류: {e.stderr.decode()[-300:] if e.stderr else str(e)}", "error")
     except Exception as e:
-        training_status = {"status": "error", "message": str(e)}
+        _set_status(str(e), "error")
 
 
 # ──────────────────────────── API ────────────────────────────
