@@ -212,13 +212,18 @@ async def generate(
     if not text.strip():
         raise HTTPException(400, "텍스트를 입력해주세요.")
 
-    # speed → edge-tts rate 문자열 변환 (+0%, +20%, -10% 형태)
-    rate_pct = int((speed - 1.0) * 100)
-    rate_str = f"+{rate_pct}%" if rate_pct >= 0 else f"{rate_pct}%"
-    audio = await edge_tts_generate(text.strip(), voice=voice, rate=rate_str)
+    try:
+        rate_pct = int((speed - 1.0) * 100)
+        rate_str = f"+{rate_pct}%" if rate_pct >= 0 else f"{rate_pct}%"
+        audio = await edge_tts_generate(text.strip(), voice=voice, rate=rate_str)
+    except Exception as e:
+        raise HTTPException(500, f"TTS 생성 실패: {e}")
 
-    if use_rvc and (MODELS_DIR / "voice.pth").exists():
-        audio = rvc_convert(audio, f0_up_key=f0_key)
+    try:
+        if use_rvc and (MODELS_DIR / "voice.pth").exists():
+            audio = rvc_convert(audio, f0_up_key=f0_key)
+    except Exception as e:
+        raise HTTPException(500, f"RVC 변환 실패: {e}")
 
     out_name = f"{uuid.uuid4().hex}.wav"
     out_path = OUTPUTS_DIR / out_name
