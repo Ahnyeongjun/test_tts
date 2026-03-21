@@ -158,7 +158,7 @@ def _run_training(voice_files: list[str]):
         # ── 3. 오디오 전처리 ──
         _set_status(f"오디오 전처리 중... ({total_sec:.0f}초 분량)")
         subprocess.run(
-            ["python", "trainset_preprocess_pipeline_print.py",
+            ["python", "infer/modules/train/preprocess.py",
              str(trainset_dir), "40000", "2", str(exp_dir), "False", "3.0"],
             check=True, cwd=str(RVC_DIR), capture_output=True,
         )
@@ -166,23 +166,55 @@ def _run_training(voice_files: list[str]):
         # ── 4. F0 추출 ──
         _set_status("F0(피치) 추출 중...")
         subprocess.run(
-            ["python", "extract_f0_print.py", str(exp_dir), "2", "rmvpe"],
+            ["python", "infer/modules/train/extract/extract_f0_print.py",
+             str(exp_dir), "2", "rmvpe"],
             check=True, cwd=str(RVC_DIR), capture_output=True,
         )
 
         # ── 5. HuBERT 특징 추출 ──
         _set_status("HuBERT 특징 추출 중...")
         subprocess.run(
-            ["python", "extract_feature_print.py",
-             "cuda:0", "1", "0", "0", str(exp_dir), "v2"],
+            ["python", "infer/modules/train/extract_feature_print.py",
+             "cuda:0", "1", "0", "0", str(exp_dir), "v2", "true"],
             check=True, cwd=str(RVC_DIR), capture_output=True,
         )
 
-        # ── 6. 학습 ──
+        # ── 6. filelist.txt 생성 ──
+        _set_status("파일 목록 생성 중...")
+        import json, random as _random
+        gt_wavs_dir = exp_dir / "0_gt_wavs"
+        feature_dir = exp_dir / "3_feature768"
+        f0_dir      = exp_dir / "2a_f0"
+        f0nsf_dir   = exp_dir / "2b-f0nsf"
+        names = (
+            {n.split(".")[0] for n in os.listdir(gt_wavs_dir)}
+            & {n.split(".")[0] for n in os.listdir(feature_dir)}
+            & {n.split(".")[0] for n in os.listdir(f0_dir)}
+            & {n.split(".")[0] for n in os.listdir(f0nsf_dir)}
+        )
+        opt = [
+            f"{gt_wavs_dir}/{n}.wav|{feature_dir}/{n}.npy|{f0_dir}/{n}.wav.npy|{f0nsf_dir}/{n}.wav.npy|0"
+            for n in names
+        ]
+        mute_dir = RVC_DIR / "logs" / "mute"
+        for _ in range(2):
+            opt.append(
+                f"{mute_dir}/0_gt_wavs/mute40k.wav|{mute_dir}/3_feature768/mute.npy"
+                f"|{mute_dir}/2a_f0/mute.wav.npy|{mute_dir}/2b-f0nsf/mute.wav.npy|0"
+            )
+        _random.shuffle(opt)
+        (exp_dir / "filelist.txt").write_text("\n".join(opt))
+
+        # config.json 복사
+        config_src = RVC_DIR / "configs" / "v2" / "40k.json"
+        if config_src.exists() and not (exp_dir / "config.json").exists():
+            shutil.copy(str(config_src), str(exp_dir / "config.json"))
+
+        # ── 7. 학습 ──
         _set_status("학습 중... (GPU에 따라 10~60분 소요)")
         assets = RVC_DIR / "assets" / "pretrained_v2"
         subprocess.run(
-            ["python", "train_nsf_sim.py",
+            ["python", "infer/modules/train/train.py",
              "-e", RVC_EXP_NAME, "-sr", "40k", "-f0", "1",
              "-bs", "4", "-g", "0", "-te", "200", "-se", "50",
              "-pg", str(assets / "f0G40k.pth"),
@@ -191,7 +223,7 @@ def _run_training(voice_files: list[str]):
             check=True, cwd=str(RVC_DIR), capture_output=True,
         )
 
-        # ── 7. 결과 모델 복사 ──
+        # ── 8. 결과 모델 복사 ──
         weights = sorted((RVC_DIR / "weights").glob(f"{RVC_EXP_NAME}*.pth"))
         if not weights:
             return _set_status("학습 완료됐지만 모델 파일을 찾지 못했어요.", "error")
