@@ -1,4 +1,7 @@
 fastapi
 uvicorn[standard]
 python-multipart
-f5-tts
+kokoro>=0.9.2
+soundfile
+numpy
+rvc-python

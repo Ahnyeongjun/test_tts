@@ -10,8 +10,9 @@
     body {
       min-height: 100vh;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
+      padding: 40px 16px;
       background: #0f0f13;
       font-family: 'Segoe UI', sans-serif;
       color: #e8e8f0;
@@ -21,31 +22,37 @@
       background: #1a1a24;
       border: 1px solid #2a2a38;
       border-radius: 16px;
-      padding: 40px;
-      width: 520px;
+      padding: 36px 40px;
+      width: 560px;
       display: flex;
       flex-direction: column;
-      gap: 24px;
+      gap: 20px;
       box-shadow: 0 8px 40px rgba(0,0,0,0.4);
     }
 
-    h1 {
-      font-size: 20px;
-      font-weight: 600;
-      color: #c4b5fd;
-      letter-spacing: -0.3px;
-    }
+    h1 { font-size: 20px; font-weight: 600; color: #c4b5fd; }
 
-    label {
-      font-size: 13px;
-      color: #9090b0;
-      margin-bottom: 6px;
-      display: block;
+    /* ── tabs ── */
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid #2a2a38; }
+    .tab {
+      padding: 8px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #7070a0;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
     }
+    .tab.active { color: #c4b5fd; border-bottom-color: #7c5cfc; }
+    .tab-panel { display: none; flex-direction: column; gap: 16px; }
+    .tab-panel.active { display: flex; }
 
+    /* ── form elements ── */
+    label { font-size: 13px; color: #9090b0; margin-bottom: 5px; display: block; }
     .field { display: flex; flex-direction: column; }
 
-    select, textarea {
+    select, textarea, input[type=number], input[type=range] {
       background: #12121c;
       border: 1px solid #2a2a3a;
       border-radius: 8px;
@@ -54,77 +61,72 @@
       font-size: 14px;
       outline: none;
       transition: border-color 0.2s;
+      width: 100%;
     }
+    select:focus, textarea:focus { border-color: #7c5cfc; }
+    textarea { resize: vertical; min-height: 110px; line-height: 1.6; }
 
-    select:focus, textarea:focus {
-      border-color: #7c5cfc;
-    }
+    input[type=number] { width: 80px; }
+    input[type=range] { padding: 4px 0; cursor: pointer; }
 
-    textarea {
-      resize: vertical;
-      min-height: 110px;
-      line-height: 1.6;
-    }
+    .row { display: flex; align-items: center; gap: 10px; }
+    .row label { margin: 0; white-space: nowrap; }
 
+    /* ── upload area ── */
     .upload-area {
       border: 1px dashed #3a3a50;
       border-radius: 8px;
-      padding: 20px;
+      padding: 18px;
       text-align: center;
       cursor: pointer;
       transition: border-color 0.2s, background 0.2s;
     }
-
-    .upload-area:hover {
-      border-color: #7c5cfc;
-      background: #1e1e2e;
-    }
-
+    .upload-area:hover { border-color: #7c5cfc; background: #1e1e2e; }
     .upload-area input { display: none; }
+    .upload-area .icon { font-size: 26px; margin-bottom: 4px; }
+    .upload-area p { font-size: 13px; color: #7070a0; }
 
-    .upload-area p { font-size: 13px; color: #7070a0; margin-top: 4px; }
-    .upload-area .icon { font-size: 28px; margin-bottom: 6px; }
-
-    .lang-row {
-      display: flex;
-      gap: 8px;
+    /* ── file checklist ── */
+    .file-list { display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto; }
+    .file-item {
+      display: flex; align-items: center; gap: 8px;
+      background: #12121c; border: 1px solid #2a2a3a;
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
     }
+    .file-item input[type=checkbox] { accent-color: #7c5cfc; width: 15px; height: 15px; flex-shrink: 0; }
+    .file-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 
-    .lang-row select { flex: 1; }
-
+    /* ── buttons ── */
     button {
       background: #7c5cfc;
       color: #fff;
       border: none;
       border-radius: 8px;
-      padding: 12px;
-      font-size: 15px;
+      padding: 11px 18px;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
       transition: background 0.2s, transform 0.1s;
     }
-
     button:hover { background: #6a4de0; }
     button:active { transform: scale(0.98); }
     button:disabled { background: #3a3a50; cursor: not-allowed; }
-
-    .status {
-      font-size: 13px;
-      color: #7070a0;
-      text-align: center;
-      min-height: 18px;
+    .btn-sm { padding: 7px 14px; font-size: 13px; }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid #3a3a50;
+      color: #c4b5fd;
     }
+    .btn-outline:hover { background: #1e1e2e; }
 
+    /* ── status / result ── */
+    .status { font-size: 13px; color: #7070a0; text-align: center; min-height: 18px; }
     .status.error { color: #f87171; }
     .status.success { color: #6ee7b7; }
+    .status.warn { color: #fbbf24; }
 
-    audio {
-      width: 100%;
-      border-radius: 8px;
-    }
-
+    audio { width: 100%; border-radius: 8px; }
     .result { display: flex; flex-direction: column; gap: 10px; }
-
     .dl-btn {
       background: #1e1e2e;
       border: 1px solid #2a2a3a;
@@ -136,150 +138,350 @@
       text-decoration: none;
       transition: background 0.2s;
     }
-
     .dl-btn:hover { background: #2a2a3a; }
+
+    /* ── model badge ── */
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-weight: 600;
+      margin-left: 6px;
+    }
+    .badge.ready { background: #065f46; color: #6ee7b7; }
+    .badge.none { background: #3a1e1e; color: #f87171; }
+
+    /* ── progress bar ── */
+    .progress-wrap { background: #12121c; border-radius: 6px; height: 6px; overflow: hidden; }
+    .progress-bar {
+      height: 100%;
+      background: #7c5cfc;
+      width: 0%;
+      transition: width 0.4s;
+      border-radius: 6px;
+    }
 
     .spinner {
       display: inline-block;
-      width: 14px; height: 14px;
+      width: 13px; height: 13px;
       border: 2px solid #ffffff44;
       border-top-color: #fff;
       border-radius: 50%;
       animation: spin 0.7s linear infinite;
       vertical-align: middle;
-      margin-right: 6px;
+      margin-right: 5px;
     }
-
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    .hint { font-size: 12px; color: #5050a0; margin-top: 4px; }
+
+    hr { border: none; border-top: 1px solid #2a2a38; }
   </style>
 </head>
 <body>
 <div class="card">
   <h1>🎙️ 내 목소리 TTS</h1>
 
-  <!-- 목소리 업로드 -->
-  <div class="field">
-    <label>목소리 샘플 업로드 <span style="color:#5050a0">(wav / mp3 / flac / m4a, 6초 이상 권장)</span></label>
-    <div class="upload-area" onclick="document.getElementById('voiceFile').click()">
-      <div class="icon">📂</div>
-      <strong id="uploadLabel">파일 선택하기</strong>
-      <p>클릭해서 목소리 파일 업로드</p>
-      <input type="file" id="voiceFile" accept=".wav,.mp3,.flac,.m4a" onchange="handleUpload()" />
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('generate')">음성 생성</div>
+    <div class="tab" onclick="switchTab('train')">🔧 RVC 학습</div>
+    <div class="tab" onclick="switchTab('model')">📦 모델 업로드</div>
+  </div>
+
+  <!-- ═══════════════ 생성 탭 ═══════════════ -->
+  <div id="tab-generate" class="tab-panel active">
+
+    <div class="field">
+      <label>변환할 텍스트</label>
+      <textarea id="textInput" placeholder="여기에 읽어줄 텍스트를 입력하세요..."></textarea>
+    </div>
+
+    <div class="row">
+      <div class="field" style="flex:1">
+        <label>Kokoro 목소리</label>
+        <select id="voiceSelect">
+          <option value="kf_bella">kf_bella (여성)</option>
+          <option value="kf_nicola">kf_nicola (여성)</option>
+          <option value="kf_alpha">kf_alpha (여성)</option>
+          <option value="km_yunho">km_yunho (남성)</option>
+        </select>
+      </div>
+      <div class="field" style="width:80px">
+        <label>속도</label>
+        <input type="number" id="speed" value="1.0" min="0.5" max="2.0" step="0.05" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label>
+        RVC 음성 변환
+        <span id="rvcBadge" class="badge none">모델 없음</span>
+      </label>
+      <div class="row" style="gap:16px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;color:#e8e8f0">
+          <input type="checkbox" id="useRvc" checked style="accent-color:#7c5cfc;width:15px;height:15px" />
+          RVC 변환 사용
+        </label>
+        <div class="row" style="flex:1">
+          <label style="font-size:12px">피치 (반음)</label>
+          <input type="number" id="f0Key" value="0" min="-12" max="12" step="1" style="width:70px" />
+        </div>
+      </div>
+      <p class="hint">RVC 모델이 있어야 변환돼요. 없으면 Kokoro 목소리 그대로 출력됩니다.</p>
+    </div>
+
+    <button id="generateBtn" onclick="generate()">음성 생성하기</button>
+    <div class="status" id="genStatus"></div>
+
+    <div class="result" id="result" style="display:none">
+      <audio id="audioPlayer" controls></audio>
+      <a id="downloadLink" class="dl-btn" download>⬇️ 다운로드</a>
     </div>
   </div>
 
-  <!-- 목소리 선택 -->
-  <div class="field">
-    <label>저장된 목소리 선택</label>
-    <select id="voiceSelect">
-      <option value="">-- 목소리를 선택하세요 --</option>
-    </select>
+  <!-- ═══════════════ 학습 탭 ═══════════════ -->
+  <div id="tab-train" class="tab-panel">
+
+    <div class="field">
+      <label>목소리 샘플 업로드 <span style="color:#5050a0">(wav/mp3/flac/m4a)</span></label>
+      <div class="upload-area" onclick="document.getElementById('trainFile').click()">
+        <div class="icon">📂</div>
+        <strong>파일 선택 (여러 개 가능)</strong>
+        <p>총 30초 이상 권장 · 깨끗한 녹음일수록 좋아요</p>
+        <input type="file" id="trainFile" accept=".wav,.mp3,.flac,.m4a" multiple onchange="handleTrainUpload()" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label>학습에 사용할 파일 선택</label>
+      <div class="file-list" id="fileList">
+        <div style="font-size:13px;color:#5050a0;text-align:center;padding:10px">업로드된 파일이 없어요</div>
+      </div>
+    </div>
+
+    <button id="trainBtn" onclick="startTrain()" class="btn-sm">🚀 RVC 학습 시작</button>
+
+    <div class="progress-wrap" id="progressWrap" style="display:none">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+    <div class="status" id="trainStatus"></div>
   </div>
 
-  <!-- 참고 텍스트 -->
-  <div class="field">
-    <label>샘플 음성의 내용 <span style="color:#5050a0">(선택사항 — 비우면 자동 인식)</span></label>
-    <textarea id="refText" placeholder="목소리 샘플 파일에서 말하는 내용을 적어주세요. 비워도 됩니다." style="min-height:60px"></textarea>
-  </div>
+  <!-- ═══════════════ 모델 업로드 탭 ═══════════════ -->
+  <div id="tab-model" class="tab-panel">
+    <p style="font-size:13px;color:#9090b0;line-height:1.6">
+      이미 학습된 RVC 모델(.pth)과 인덱스(.index)를 직접 업로드할 수 있어요.<br/>
+      학습 탭 대신 사용하거나, 외부에서 학습한 모델을 올릴 때 써요.
+    </p>
 
-  <!-- 텍스트 입력 -->
-  <div class="field">
-    <label>변환할 텍스트</label>
-    <textarea id="textInput" placeholder="여기에 읽어줄 텍스트를 입력하세요..."></textarea>
-  </div>
+    <div class="field">
+      <label>모델 파일 (.pth)</label>
+      <div class="upload-area" onclick="document.getElementById('pthFile').click()">
+        <div class="icon">🧠</div>
+        <strong id="pthLabel">voice.pth 선택</strong>
+        <p>RVC 학습된 .pth 파일</p>
+        <input type="file" id="pthFile" accept=".pth" onchange="uploadModel(this, 'pthLabel')" />
+      </div>
+    </div>
 
-  <button id="generateBtn" onclick="generate()">음성 생성하기</button>
+    <div class="field">
+      <label>인덱스 파일 (.index) <span style="color:#5050a0">선택사항</span></label>
+      <div class="upload-area" onclick="document.getElementById('idxFile').click()">
+        <div class="icon">📑</div>
+        <strong id="idxLabel">voice.index 선택</strong>
+        <p>없어도 되지만 있으면 품질이 좋아요</p>
+        <input type="file" id="idxFile" accept=".index" onchange="uploadModel(this, 'idxLabel')" />
+      </div>
+    </div>
 
-  <div class="status" id="status"></div>
-
-  <div class="result" id="result" style="display:none">
-    <audio id="audioPlayer" controls></audio>
-    <a id="downloadLink" class="dl-btn" download>⬇️ 다운로드</a>
+    <div class="status" id="modelStatus"></div>
   </div>
 </div>
 
 <script>
-  async function loadVoices() {
-    const res = await fetch('/voices');
-    const data = await res.json();
-    const sel = document.getElementById('voiceSelect');
-    sel.innerHTML = '<option value="">-- 목소리를 선택하세요 --</option>';
-    data.voices.forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v; opt.textContent = v;
-      sel.appendChild(opt);
+  // ── tab switch ──
+  function switchTab(name) {
+    document.querySelectorAll('.tab').forEach((t, i) => {
+      const names = ['generate', 'train', 'model'];
+      t.classList.toggle('active', names[i] === name);
     });
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    if (name === 'generate') refreshModelStatus();
+    if (name === 'train') refreshFileList();
   }
 
-  async function handleUpload() {
-    const file = document.getElementById('voiceFile').files[0];
-    if (!file) return;
-
-    document.getElementById('uploadLabel').textContent = file.name;
-    setStatus('업로드 중...', '');
-
-    const form = new FormData();
-    form.append('file', file);
-
-    const res = await fetch('/upload-voice', { method: 'POST', body: form });
-    if (res.ok) {
-      setStatus('업로드 완료!', 'success');
-      await loadVoices();
-      document.getElementById('voiceSelect').value = file.name;
+  // ── model status ──
+  async function refreshModelStatus() {
+    const res = await fetch('/model-status');
+    const data = await res.json();
+    const badge = document.getElementById('rvcBadge');
+    if (data.model_ready) {
+      badge.textContent = '준비됨';
+      badge.className = 'badge ready';
     } else {
-      const err = await res.json();
-      setStatus(err.detail || '업로드 실패', 'error');
+      badge.textContent = '모델 없음';
+      badge.className = 'badge none';
+    }
+    // propagate training status if on train tab
+    if (data.training.status === 'running') {
+      setStatus('trainStatus', data.training.message, '');
     }
   }
 
+  // ── voice file list ──
+  async function refreshFileList() {
+    const res = await fetch('/voices');
+    const data = await res.json();
+    const el = document.getElementById('fileList');
+    if (!data.voices.length) {
+      el.innerHTML = '<div style="font-size:13px;color:#5050a0;text-align:center;padding:10px">업로드된 파일이 없어요</div>';
+      return;
+    }
+    el.innerHTML = data.voices.map(v => `
+      <label class="file-item">
+        <input type="checkbox" class="train-file" value="${v}" checked />
+        <span>${v}</span>
+      </label>`).join('');
+  }
+
+  // ── train file upload ──
+  async function handleTrainUpload() {
+    const files = document.getElementById('trainFile').files;
+    if (!files.length) return;
+
+    setStatus('trainStatus', '업로드 중...', '');
+    for (const file of files) {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/upload-voice', { method: 'POST', body: form });
+      if (!res.ok) {
+        const e = await res.json();
+        setStatus('trainStatus', e.detail || '업로드 실패', 'error');
+        return;
+      }
+    }
+    setStatus('trainStatus', '업로드 완료!', 'success');
+    await refreshFileList();
+  }
+
+  // ── model upload ──
+  async function uploadModel(input, labelId) {
+    const file = input.files[0];
+    if (!file) return;
+    document.getElementById(labelId).textContent = file.name;
+    setStatus('modelStatus', '업로드 중...', '');
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/upload-model', { method: 'POST', body: form });
+    if (res.ok) {
+      setStatus('modelStatus', '업로드 완료!', 'success');
+      refreshModelStatus();
+    } else {
+      const e = await res.json();
+      setStatus('modelStatus', e.detail || '실패', 'error');
+    }
+  }
+
+  // ── start training ──
+  async function startTrain() {
+    const checked = [...document.querySelectorAll('.train-file:checked')].map(c => c.value);
+    if (!checked.length) {
+      setStatus('trainStatus', '학습할 파일을 선택해주세요.', 'error');
+      return;
+    }
+    const btn = document.getElementById('trainBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>학습 중...';
+    document.getElementById('progressWrap').style.display = 'block';
+    animateProgress();
+
+    const form = new FormData();
+    form.append('voice_files', JSON.stringify(checked));
+    const res = await fetch('/train', { method: 'POST', body: form });
+    if (!res.ok) {
+      const e = await res.json();
+      setStatus('trainStatus', e.detail || '학습 실패', 'error');
+      btn.disabled = false;
+      btn.textContent = '🚀 RVC 학습 시작';
+      return;
+    }
+    pollTraining();
+  }
+
+  function animateProgress() {
+    const bar = document.getElementById('progressBar');
+    let pct = 0;
+    const iv = setInterval(() => {
+      if (pct >= 90) { clearInterval(iv); return; }
+      pct += Math.random() * 3;
+      bar.style.width = Math.min(pct, 90) + '%';
+    }, 800);
+  }
+
+  async function pollTraining() {
+    const res = await fetch('/model-status');
+    const data = await res.json();
+    const t = data.training;
+    setStatus('trainStatus', t.message, t.status === 'error' ? 'error' : t.status === 'done' ? 'success' : '');
+
+    if (t.status === 'running') {
+      setTimeout(pollTraining, 3000);
+    } else {
+      document.getElementById('progressBar').style.width = '100%';
+      const btn = document.getElementById('trainBtn');
+      btn.disabled = false;
+      btn.textContent = '🚀 RVC 학습 시작';
+      if (t.status === 'done') refreshModelStatus();
+    }
+  }
+
+  // ── generate ──
   async function generate() {
     const text = document.getElementById('textInput').value.trim();
-    const voice = document.getElementById('voiceSelect').value;
-    const refText = document.getElementById('refText').value.trim();
-
-    if (!text) return setStatus('텍스트를 입력해주세요.', 'error');
-    if (!voice) return setStatus('목소리 파일을 선택해주세요.', 'error');
+    if (!text) return setStatus('genStatus', '텍스트를 입력해주세요.', 'error');
 
     const btn = document.getElementById('generateBtn');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span>생성 중...';
     document.getElementById('result').style.display = 'none';
-    setStatus('모델이 음성을 생성하고 있어요. 잠깐만요...', '');
+    setStatus('genStatus', '음성을 생성하고 있어요...', '');
 
     const form = new FormData();
     form.append('text', text);
-    form.append('voice_file', voice);
-    form.append('ref_text', refText);
+    form.append('voice', document.getElementById('voiceSelect').value);
+    form.append('speed', document.getElementById('speed').value);
+    form.append('use_rvc', document.getElementById('useRvc').checked);
+    form.append('f0_key', document.getElementById('f0Key').value);
 
     try {
       const res = await fetch('/generate', { method: 'POST', body: form });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || '생성 실패');
-      }
+      if (!res.ok) { const e = await res.json(); throw new Error(e.detail || '생성 실패'); }
       const data = await res.json();
       const url = `/download/${data.output}`;
-
       document.getElementById('audioPlayer').src = url;
       document.getElementById('downloadLink').href = url;
       document.getElementById('downloadLink').download = data.output;
       document.getElementById('result').style.display = 'flex';
-      setStatus('완료!', 'success');
+      setStatus('genStatus', '완료!', 'success');
     } catch (e) {
-      setStatus(e.message, 'error');
+      setStatus('genStatus', e.message, 'error');
     } finally {
       btn.disabled = false;
       btn.textContent = '음성 생성하기';
     }
   }
 
-  function setStatus(msg, type) {
-    const el = document.getElementById('status');
+  function setStatus(id, msg, type) {
+    const el = document.getElementById(id);
     el.textContent = msg;
-    el.className = 'status ' + type;
+    el.className = 'status ' + (type || '');
   }
 
-  loadVoices();
+  // init
+  refreshModelStatus();
+  refreshFileList();
 </script>
 </body>
 </html>

@@ -1,9 +1,9 @@
-import re
 import uuid
-import wave
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException
+import numpy as np
+import soundfile as sf
+from fastapi import FastAPI, BackgroundTasks, File, Form, UploadFile, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -11,131 +11,209 @@ app = FastAPI()
 
 VOICES_DIR = Path("voices")
 OUTPUTS_DIR = Path("outputs")
-VOICES_DIR.mkdir(exist_ok=True)
-OUTPUTS_DIR.mkdir(exist_ok=True)
+MODELS_DIR = Path("models")
+for d in (VOICES_DIR, OUTPUTS_DIR, MODELS_DIR):
+    d.mkdir(exist_ok=True)
 
-tts_model = None
+SAMPLE_RATE = 24000  # kokoro default
 
+tts_pipeline = None
+rvc_model = None
+training_status = {"status": "idle", "message": "학습 전"}
+
+
+# ──────────────────────────── TTS ────────────────────────────
 
 def get_tts():
-    global tts_model
-    if tts_model is None:
-        import os
-        from huggingface_hub import hf_hub_download
-        from f5_tts.api import F5TTS
-
-        # Korean fine-tuned model (team-lucid/F5-TTS-ko)
-        ckpt_raw = hf_hub_download(repo_id="team-lucid/F5-TTS-ko", filename="pytorch_model.bin")
-        vocab_json = hf_hub_download(repo_id="team-lucid/F5-TTS-ko", filename="vocab.json")
-
-        # vocab.json → vocab.txt 변환 (F5TTS 포맷)
-        import json, torch
-        vocab_txt = vocab_json.replace("vocab.json", "vocab.txt")
-        if not os.path.exists(vocab_txt):
-            with open(vocab_json, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            tokens = sorted(data.items(), key=lambda x: x[1])
-            with open(vocab_txt, "w", encoding="utf-8") as f:
-                for token, _ in tokens:
-                    f.write(token + "\n")
-
-        # checkpoint 포맷 변환 (raw state_dict → model_state_dict 래핑)
-        ckpt_converted = ckpt_raw.replace("pytorch_model.bin", "model_converted.pt")
-        if not os.path.exists(ckpt_converted):
-            state_dict = torch.load(ckpt_raw, map_location="cpu")
-            torch.save({"model_state_dict": state_dict}, ckpt_converted)
-
-        tts_model = F5TTS(ckpt_file=ckpt_converted, vocab_file=vocab_txt, use_ema=False)
-    return tts_model
+    global tts_pipeline
+    if tts_pipeline is None:
+        from kokoro import KPipeline
+        tts_pipeline = KPipeline(lang_code="k")
+    return tts_pipeline
 
 
-def split_sentences(text: str) -> list[str]:
-    """마침표/느낌표/물음표 기준으로 문장 분리. 너무 짧은 조각은 합침."""
-    parts = re.split(r'(?<=[.!?。！？])\s*', text.strip())
-    sentences, buf = [], ""
-    for p in parts:
-        p = p.strip()
-        if not p:
-            continue
-        buf = (buf + " " + p).strip() if buf else p
-        if len(buf) >= 15:
-            sentences.append(buf)
-            buf = ""
-    if buf:
-        sentences.append(buf)
-    return sentences or [text]
+def kokoro_generate(text: str, voice: str, speed: float) -> np.ndarray:
+    pipeline = get_tts()
+    chunks = []
+    for _, _, audio in pipeline(text, voice=voice, speed=speed):
+        if audio is not None and len(audio) > 0:
+            chunks.append(np.array(audio, dtype=np.float32))
+    if not chunks:
+        raise RuntimeError("Kokoro가 오디오를 생성하지 못했어요.")
+    return np.concatenate(chunks)
 
 
-def concat_wavs(paths: list[Path], output: Path):
-    """여러 wav 파일을 하나로 합침."""
-    with wave.open(str(output), "wb") as out_wav:
-        for i, p in enumerate(paths):
-            with wave.open(str(p), "rb") as w:
-                if i == 0:
-                    out_wav.setparams(w.getparams())
-                out_wav.writeframes(w.readframes(w.getnframes()))
+# ──────────────────────────── RVC ────────────────────────────
 
+def load_rvc():
+    global rvc_model
+    if rvc_model is not None:
+        return rvc_model
+    pth = MODELS_DIR / "voice.pth"
+    if not pth.exists():
+        return None
+    from rvc_python.infer import RVCModel
+    idx = str(MODELS_DIR / "voice.index")
+    m = RVCModel()
+    m.load_model(str(pth), idx if Path(idx).exists() else "")
+    rvc_model = m
+    return rvc_model
+
+
+def rvc_convert(audio: np.ndarray, f0_up_key: int = 0) -> np.ndarray:
+    rvc = load_rvc()
+    if rvc is None:
+        return audio
+
+    tmp_in = OUTPUTS_DIR / f"_rvc_in_{uuid.uuid4().hex}.wav"
+    tmp_out = OUTPUTS_DIR / f"_rvc_out_{uuid.uuid4().hex}.wav"
+    sf.write(str(tmp_in), audio, SAMPLE_RATE)
+    try:
+        rvc.infer_file(str(tmp_in), str(tmp_out), f0up_key=f0_up_key, f0method="rmvpe")
+        result, _ = sf.read(str(tmp_out), dtype="float32")
+        return result
+    finally:
+        tmp_in.unlink(missing_ok=True)
+        tmp_out.unlink(missing_ok=True)
+
+
+# ──────────────────────────── 학습 ────────────────────────────
+
+def _run_training(voice_files: list[str]):
+    global training_status, rvc_model
+    rvc_model = None  # 기존 모델 초기화
+    training_status = {"status": "running", "message": "오디오 전처리 중..."}
+    try:
+        # 선택된 voice 파일 모두 합치기
+        audio_chunks = []
+        for fname in voice_files:
+            path = VOICES_DIR / fname
+            if not path.exists():
+                continue
+            data, sr = sf.read(str(path), dtype="float32")
+            if data.ndim > 1:
+                data = data.mean(axis=1)
+            if sr != SAMPLE_RATE:
+                import librosa
+                data = librosa.resample(data, orig_sr=sr, target_sr=SAMPLE_RATE)
+            audio_chunks.append(data)
+
+        if not audio_chunks:
+            training_status = {"status": "error", "message": "학습할 오디오 파일이 없어요."}
+            return
+
+        combined = np.concatenate(audio_chunks)
+        combined_path = MODELS_DIR / "training_audio.wav"
+        sf.write(str(combined_path), combined, SAMPLE_RATE)
+
+        total_sec = len(combined) / SAMPLE_RATE
+        if total_sec < 30:
+            training_status = {
+                "status": "error",
+                "message": f"학습 음성이 너무 짧아요 ({total_sec:.0f}초). 최소 30초 이상 필요합니다.",
+            }
+            return
+
+        training_status = {"status": "running", "message": f"RVC 학습 중... ({total_sec:.0f}초 분량)"}
+
+        from rvc_python.train import train_model
+        train_model(
+            model_name="voice",
+            audio_files=[str(combined_path)],
+            save_dir=str(MODELS_DIR),
+            epochs=100,
+            sample_rate=SAMPLE_RATE,
+        )
+        training_status = {"status": "done", "message": "학습 완료! 이제 음성 생성에 사용돼요."}
+    except Exception as e:
+        training_status = {"status": "error", "message": str(e)}
+
+
+# ──────────────────────────── API ────────────────────────────
 
 @app.get("/voices")
 def list_voices():
-    files = [f.name for f in VOICES_DIR.iterdir() if f.suffix in (".wav", ".mp3", ".flac", ".m4a")]
-    return {"voices": files}
+    exts = {".wav", ".mp3", ".flac", ".m4a"}
+    files = [f.name for f in VOICES_DIR.iterdir() if f.suffix in exts]
+    return {"voices": sorted(files)}
 
 
 @app.post("/upload-voice")
 async def upload_voice(file: UploadFile = File(...)):
-    suffix = Path(file.filename).suffix
-    if suffix not in (".wav", ".mp3", ".flac", ".m4a"):
-        raise HTTPException(status_code=400, detail="wav, mp3, flac, m4a 파일만 업로드 가능해요.")
+    if Path(file.filename).suffix not in {".wav", ".mp3", ".flac", ".m4a"}:
+        raise HTTPException(400, "wav, mp3, flac, m4a 파일만 업로드 가능해요.")
     save_path = VOICES_DIR / file.filename
-    with open(save_path, "wb") as f:
-        f.write(await file.read())
+    save_path.write_bytes(await file.read())
     return {"message": "업로드 완료", "filename": file.filename}
+
+
+@app.post("/upload-model")
+async def upload_model(file: UploadFile = File(...)):
+    """사전 학습된 RVC .pth 또는 .index 파일 업로드"""
+    global rvc_model
+    suffix = Path(file.filename).suffix
+    if suffix not in {".pth", ".index"}:
+        raise HTTPException(400, ".pth 또는 .index 파일만 업로드 가능해요.")
+    dest = MODELS_DIR / ("voice" + suffix)
+    dest.write_bytes(await file.read())
+    rvc_model = None  # 다음 호출 때 재로드
+    return {"message": f"모델 업로드 완료 ({dest.name})"}
+
+
+@app.get("/model-status")
+def model_status():
+    pth_exists = (MODELS_DIR / "voice.pth").exists()
+    idx_exists = (MODELS_DIR / "voice.index").exists()
+    return {
+        "model_ready": pth_exists,
+        "index_ready": idx_exists,
+        "training": training_status,
+    }
+
+
+@app.post("/train")
+async def start_train(
+    background_tasks: BackgroundTasks,
+    voice_files: str = Form(...),  # JSON array string
+):
+    import json
+    files = json.loads(voice_files)
+    if not files:
+        raise HTTPException(400, "학습할 파일을 선택해주세요.")
+    if training_status["status"] == "running":
+        raise HTTPException(400, "이미 학습 중이에요.")
+    background_tasks.add_task(_run_training, files)
+    return {"message": "학습 시작"}
 
 
 @app.post("/generate")
 async def generate(
     text: str = Form(...),
-    voice_file: str = Form(...),
-    ref_text: str = Form(default=""),
+    voice: str = Form(default="kf_bella"),
+    speed: float = Form(default=1.0),
+    use_rvc: bool = Form(default=True),
+    f0_key: int = Form(default=0),
 ):
-    voice_path = VOICES_DIR / voice_file
-    if not voice_path.exists():
-        raise HTTPException(status_code=404, detail="목소리 파일을 찾을 수 없어요.")
+    if not text.strip():
+        raise HTTPException(400, "텍스트를 입력해주세요.")
 
-    tts = get_tts()
-    sentences = split_sentences(text)
-    tmp_files = []
+    audio = kokoro_generate(text.strip(), voice=voice, speed=speed)
 
-    for i, sentence in enumerate(sentences):
-        tmp_path = OUTPUTS_DIR / f"_tmp_{uuid.uuid4().hex}.wav"
-        tts.infer(
-            ref_file=str(voice_path),
-            ref_text=ref_text,
-            gen_text=sentence,
-            file_wave=str(tmp_path),
-        )
-        tmp_files.append(tmp_path)
+    if use_rvc and (MODELS_DIR / "voice.pth").exists():
+        audio = rvc_convert(audio, f0_up_key=f0_key)
 
-    output_filename = f"{uuid.uuid4().hex}.wav"
-    output_path = OUTPUTS_DIR / output_filename
-
-    if len(tmp_files) == 1:
-        tmp_files[0].rename(output_path)
-    else:
-        concat_wavs(tmp_files, output_path)
-        for f in tmp_files:
-            f.unlink(missing_ok=True)
-
-    return {"output": output_filename}
+    out_name = f"{uuid.uuid4().hex}.wav"
+    out_path = OUTPUTS_DIR / out_name
+    sf.write(str(out_path), audio, SAMPLE_RATE)
+    return {"output": out_name}
 
 
 @app.get("/download/{filename}")
 def download(filename: str):
-    file_path = OUTPUTS_DIR / filename
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="파일을 찾을 수 없어요.")
-    return FileResponse(file_path, media_type="audio/wav", filename=filename)
+    p = OUTPUTS_DIR / filename
+    if not p.exists():
+        raise HTTPException(404, "파일을 찾을 수 없어요.")
+    return FileResponse(p, media_type="audio/wav", filename=filename)
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
