@@ -99,18 +99,24 @@ def _run_training(voice_files: list[str]):
     rvc_model = None  # 기존 모델 초기화
     training_status = {"status": "running", "message": "오디오 전처리 중..."}
     try:
-        # 선택된 voice 파일 모두 합치기
+        # 선택된 voice 파일 모두 합치기 (ffmpeg로 wav 변환 후 읽기)
+        import subprocess, tempfile, os
         audio_chunks = []
         for fname in voice_files:
             path = VOICES_DIR / fname
             if not path.exists():
                 continue
-            data, sr = sf.read(str(path), dtype="float32")
-            if data.ndim > 1:
-                data = data.mean(axis=1)
-            if sr != SAMPLE_RATE:
-                import librosa
-                data = librosa.resample(data, orig_sr=sr, target_sr=SAMPLE_RATE)
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_wav = tmp.name
+            try:
+                subprocess.run(
+                    ["ffmpeg", "-y", "-i", str(path), "-ar", str(SAMPLE_RATE), "-ac", "1", tmp_wav],
+                    check=True, capture_output=True,
+                )
+                data, _ = sf.read(tmp_wav, dtype="float32")
+            finally:
+                if os.path.exists(tmp_wav):
+                    os.unlink(tmp_wav)
             audio_chunks.append(data)
 
         if not audio_chunks:
