@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  rvc-train:
+    build: .
+    image: rvc-train:latest
+    shm_size: '16gb'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - MODEL_NAME=my_voice
+      - AUDIO_FILE=/data/새로운 녹음 6.m4a
+      - EPOCHS=50
+    volumes:
+      - /tmp:/data
+      - rvc-logs:/app/rvc/logs
+      - rvc-assets:/app/rvc/assets
+      - /tmp/rvc-train/train.sh:/app/train.sh
+    command: bash /app/train.sh
+
+volumes:
+  rvc-logs:
+    external: true
+  rvc-assets:
+    external: true
