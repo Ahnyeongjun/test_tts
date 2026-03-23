@@ -205,26 +205,30 @@ def _run_training(voice_files: list[str]):
         _random.shuffle(opt)
         (exp_dir / "filelist.txt").write_text("\n".join(opt))
 
-        # config.json 복사
-        config_src = RVC_DIR / "configs" / "v2" / "40k.json"
-        if config_src.exists() and not (exp_dir / "config.json").exists():
-            shutil.copy(str(config_src), str(exp_dir / "config.json"))
+        # config.json 복사 (40k는 v1 config 사용 — infer-web.py 동일 로직)
+        config_src = RVC_DIR / "configs" / "v1" / "40k.json"
+        shutil.copy(str(config_src), str(exp_dir / "config.json"))
 
         # ── 7. 학습 ──
         _set_status("학습 중... (GPU에 따라 10~60분 소요)")
         assets = RVC_DIR / "assets" / "pretrained_v2"
-        subprocess.run(
+        result = subprocess.run(
             ["python", "infer/modules/train/train.py",
              "-e", RVC_EXP_NAME, "-sr", "40k", "-f0", "1",
              "-bs", "4", "-g", "0", "-te", "200", "-se", "50",
              "-pg", str(assets / "f0G40k.pth"),
              "-pd", str(assets / "f0D40k.pth"),
              "-l", "1", "-c", "0", "-sw", "1", "-v", "v2"],
-            check=True, cwd=str(RVC_DIR), capture_output=True,
+            cwd=str(RVC_DIR), capture_output=True,
         )
+        # train.py는 학습 완료 후 os._exit(2333333) 호출 → returncode=77
+        # 이는 정상 완료이므로 returncode가 0이나 77이면 계속 진행
+        if result.returncode not in (0, 77):
+            raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
 
         # ── 8. 결과 모델 복사 ──
-        weights = sorted((RVC_DIR / "weights").glob(f"{RVC_EXP_NAME}*.pth"))
+        # savee()는 assets/weights/ (상대경로, cwd=/rvc) 에 저장
+        weights = sorted((RVC_DIR / "assets" / "weights").glob(f"{RVC_EXP_NAME}*.pth"))
         if not weights:
             return _set_status("학습 완료됐지만 모델 파일을 찾지 못했어요.", "error")
         shutil.copy(str(weights[-1]), str(MODELS_DIR / "voice.pth"))
@@ -289,6 +293,17 @@ async def start_train(
 ):
     import json
     files = json.loads(voice_files)
+    # 인코딩 자동 수정: Latin-1로 잘못 디코딩된 CP949(EUC-KR) 파일명 복원
+    fixed = []
+    for f in files:
+        try:
+            restored = f.encode("latin-1").decode("cp949")
+            if (VOICES_DIR / restored).exists():
+                f = restored
+        except Exception:
+            pass
+        fixed.append(f)
+    files = fixed
     if not files:
         raise HTTPException(400, "학습할 파일을 선택해주세요.")
     if training_status["status"] == "running":

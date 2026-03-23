@@ -14,6 +14,11 @@ RUN sed -i 's|archive.ubuntu.com|mirror.kakao.com|g; s|security.ubuntu.com|mirro
 # ── RVC WebUI 소스 클론 ──
 RUN git clone --depth=1 https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI /rvc
 
+# ── matplotlib tostring_rgb → buffer_rgba 패치 (matplotlib 3.8+ 호환) ──
+RUN sed -i \
+    's/data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep="")/buf = fig.canvas.buffer_rgba(); data = np.asarray(buf)[:, :, :3]/' \
+    /rvc/infer/lib/train/utils.py
+
 # ── RVC 학습에 필요한 패키지만 설치 (WebUI gradio 등 제외) ──
 RUN pip install --no-cache-dir \
     faiss-cpu \
@@ -22,7 +27,8 @@ RUN pip install --no-cache-dir \
     scipy \
     scikit-learn \
     tqdm \
-    tensorboard
+    tensorboard \
+    matplotlib
 
 WORKDIR /app
 

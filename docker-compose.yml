@@ -7,6 +7,7 @@ services:
       - ./voices:/app/voices      # 업로드된 목소리 샘플
       - ./outputs:/app/outputs    # 생성된 음성 파일
       - ./models:/app/models      # RVC 모델 (.pth / .index)
+    shm_size: '2gb'
     deploy:
       resources:
         reservations:
