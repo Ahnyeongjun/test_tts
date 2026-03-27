@@ -69,10 +69,10 @@ def load_rvc():
     pth = MODELS_DIR / "voice.pth"
     if not pth.exists():
         return None
-    from rvc_python.infer import RVCModel
+    from rvc_python.infer import RVCInference
     idx = str(MODELS_DIR / "voice.index")
-    m = RVCModel()
-    m.load_model(str(pth), idx if Path(idx).exists() else "")
+    m = RVCInference(device="cuda:0" if __import__("torch").cuda.is_available() else "cpu")
+    m.load_model(str(pth), index_path=idx if Path(idx).exists() else "")
     rvc_model = m
     return rvc_model
 
@@ -86,7 +86,8 @@ def rvc_convert(audio: np.ndarray, f0_up_key: int = 0) -> np.ndarray:
     tmp_out = OUTPUTS_DIR / f"_rvc_out_{uuid.uuid4().hex}.wav"
     sf.write(str(tmp_in), audio, SAMPLE_RATE)
     try:
-        rvc.infer_file(str(tmp_in), str(tmp_out), f0up_key=f0_up_key, f0method="rmvpe")
+        rvc.set_params(f0up_key=f0_up_key, f0method="rmvpe")
+        rvc.infer_file(str(tmp_in), str(tmp_out))
         result, _ = sf.read(str(tmp_out), dtype="float32")
         return result
     finally:
