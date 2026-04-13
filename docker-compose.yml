@@ -4,9 +4,9 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./voices:/app/voices      # 업로드된 목소리 샘플
-      - ./outputs:/app/outputs    # 생성된 음성 파일
-      - ./models:/app/models      # RVC 모델 (.pth / .index)
+      - ./voices:/app/voices          # 참조 오디오 샘플
+      - ./outputs:/app/outputs        # 생성된 음성 파일
+      - ./models:/app/models          # XTTS v2 모델 캐시 (TTS_HOME)
     shm_size: '2gb'
     deploy:
       resources:

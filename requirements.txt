@@ -1,7 +1,6 @@
 fastapi
 uvicorn[standard]
 python-multipart
-edge-tts
+TTS
 soundfile
 numpy
-rvc-python

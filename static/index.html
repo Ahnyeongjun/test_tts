@@ -30,7 +30,9 @@
       box-shadow: 0 8px 40px rgba(0,0,0,0.4);
     }
 
+    .header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
     h1 { font-size: 20px; font-weight: 600; color: #c4b5fd; }
+    .subtitle { font-size: 12px; color: #5050a0; }
 
     /* ── tabs ── */
     .tabs { display: flex; gap: 0; border-bottom: 1px solid #2a2a38; }
@@ -52,7 +54,7 @@
     label { font-size: 13px; color: #9090b0; margin-bottom: 5px; display: block; }
     .field { display: flex; flex-direction: column; }
 
-    select, textarea, input[type=number], input[type=range] {
+    select, textarea, input[type=range] {
       background: #12121c;
       border: 1px solid #2a2a3a;
       border-radius: 8px;
@@ -65,8 +67,6 @@
     }
     select:focus, textarea:focus { border-color: #7c5cfc; }
     textarea { resize: vertical; min-height: 110px; line-height: 1.6; }
-
-    input[type=number] { width: 80px; }
     input[type=range] { padding: 4px 0; cursor: pointer; }
 
     .row { display: flex; align-items: center; gap: 10px; }
@@ -86,8 +86,8 @@
     .upload-area .icon { font-size: 26px; margin-bottom: 4px; }
     .upload-area p { font-size: 13px; color: #7070a0; }
 
-    /* ── file checklist ── */
-    .file-list { display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto; }
+    /* ── file list ── */
+    .file-list { display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; }
     .file-item {
       display: flex; align-items: center; gap: 8px;
       background: #12121c; border: 1px solid #2a2a3a;
@@ -95,6 +95,12 @@
     }
     .file-item input[type=checkbox] { accent-color: #7c5cfc; width: 15px; height: 15px; flex-shrink: 0; }
     .file-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .file-item .del-btn {
+      background: none; border: none; color: #5050a0; font-size: 15px;
+      cursor: pointer; padding: 0 4px; line-height: 1; flex-shrink: 0;
+      transition: color 0.15s;
+    }
+    .file-item .del-btn:hover { color: #f87171; }
 
     /* ── buttons ── */
     button {
@@ -111,13 +117,6 @@
     button:hover { background: #6a4de0; }
     button:active { transform: scale(0.98); }
     button:disabled { background: #3a3a50; cursor: not-allowed; }
-    .btn-sm { padding: 7px 14px; font-size: 13px; }
-    .btn-outline {
-      background: transparent;
-      border: 1px solid #3a3a50;
-      color: #c4b5fd;
-    }
-    .btn-outline:hover { background: #1e1e2e; }
 
     /* ── status / result ── */
     .status { font-size: 13px; color: #7070a0; text-align: center; min-height: 18px; }
@@ -147,20 +146,10 @@
       padding: 2px 8px;
       border-radius: 20px;
       font-weight: 600;
-      margin-left: 6px;
     }
-    .badge.ready { background: #065f46; color: #6ee7b7; }
-    .badge.none { background: #3a1e1e; color: #f87171; }
-
-    /* ── progress bar ── */
-    .progress-wrap { background: #12121c; border-radius: 6px; height: 6px; overflow: hidden; }
-    .progress-bar {
-      height: 100%;
-      background: #7c5cfc;
-      width: 0%;
-      transition: width 0.4s;
-      border-radius: 6px;
-    }
+    .badge.ready  { background: #065f46; color: #6ee7b7; }
+    .badge.loading { background: #1e3a5f; color: #93c5fd; }
+    .badge.error  { background: #3a1e1e; color: #f87171; }
 
     .spinner {
       display: inline-block;
@@ -175,18 +164,21 @@
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .hint { font-size: 12px; color: #5050a0; margin-top: 4px; }
-
     hr { border: none; border-top: 1px solid #2a2a38; }
+    .speed-val { font-size: 13px; color: #9090b0; min-width: 32px; text-align: right; }
   </style>
 </head>
 <body>
 <div class="card">
-  <h1>🎙️ 내 목소리 TTS</h1>
+  <div class="header">
+    <h1>🎙️ 내 목소리 TTS</h1>
+    <span class="subtitle">XTTS v2 · zero-shot 목소리 복제</span>
+    <span id="modelBadge" class="badge loading">로딩 중...</span>
+  </div>
 
   <div class="tabs">
     <div class="tab active" onclick="switchTab('generate')">음성 생성</div>
-    <div class="tab" onclick="switchTab('train')">🔧 RVC 학습</div>
-    <div class="tab" onclick="switchTab('model')">📦 모델 업로드</div>
+    <div class="tab" onclick="switchTab('voices')">🎤 참조 오디오</div>
   </div>
 
   <!-- ═══════════════ 생성 탭 ═══════════════ -->
@@ -197,42 +189,20 @@
       <textarea id="textInput" placeholder="여기에 읽어줄 텍스트를 입력하세요..."></textarea>
     </div>
 
-    <div class="row">
-      <div class="field" style="flex:1">
-        <label>Kokoro 목소리</label>
-        <select id="voiceSelect">
-          <option value="ko-KR-SunHiNeural">SunHi (여성, 자연스러움)</option>
-          <option value="ko-KR-InJoonNeural">InJoon (남성, 자연스러움)</option>
-          <option value="ko-KR-HyunsuNeural">Hyunsu (남성)</option>
-          <option value="ko-KR-BongJinNeural">BongJin (남성)</option>
-          <option value="ko-KR-GookMinNeural">GookMin (남성)</option>
-          <option value="ko-KR-JiMinNeural">JiMin (여성)</option>
-          <option value="ko-KR-SeoHyeonNeural">SeoHyeon (여성)</option>
-          <option value="ko-KR-YuJinNeural">YuJin (여성)</option>
-        </select>
-      </div>
-      <div class="field" style="width:80px">
-        <label>속도</label>
-        <input type="number" id="speed" value="1.0" min="0.5" max="2.0" step="0.05" />
+    <div class="field">
+      <label>참조 오디오 <span style="color:#5050a0">(내 목소리 샘플 — 복수 선택 가능)</span></label>
+      <div class="file-list" id="refList">
+        <div style="font-size:13px;color:#5050a0;text-align:center;padding:10px">
+          참조 오디오 없음 — 오디오 탭에서 업로드하세요
+        </div>
       </div>
     </div>
 
-    <div class="field">
-      <label>
-        RVC 음성 변환
-        <span id="rvcBadge" class="badge none">모델 없음</span>
-      </label>
-      <div class="row" style="gap:16px">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;color:#e8e8f0">
-          <input type="checkbox" id="useRvc" checked style="accent-color:#7c5cfc;width:15px;height:15px" />
-          RVC 변환 사용
-        </label>
-        <div class="row" style="flex:1">
-          <label style="font-size:12px">피치 (반음)</label>
-          <input type="number" id="f0Key" value="0" min="-12" max="12" step="1" style="width:70px" />
-        </div>
-      </div>
-      <p class="hint">RVC 모델이 있어야 변환돼요. 없으면 Kokoro 목소리 그대로 출력됩니다.</p>
+    <div class="row" style="gap:12px">
+      <label style="margin:0;white-space:nowrap">속도</label>
+      <input type="range" id="speed" min="0.5" max="2.0" step="0.05" value="1.0"
+             oninput="document.getElementById('speedVal').textContent = parseFloat(this.value).toFixed(2)" />
+      <span id="speedVal" class="speed-val">1.00</span>
     </div>
 
     <button id="generateBtn" onclick="generate()">음성 생성하기</button>
@@ -244,224 +214,156 @@
     </div>
   </div>
 
-  <!-- ═══════════════ 학습 탭 ═══════════════ -->
-  <div id="tab-train" class="tab-panel">
+  <!-- ═══════════════ 참조 오디오 탭 ═══════════════ -->
+  <div id="tab-voices" class="tab-panel">
 
-    <div class="field">
-      <label>목소리 샘플 업로드 <span style="color:#5050a0">(wav/mp3/flac/m4a)</span></label>
-      <div class="upload-area" onclick="document.getElementById('trainFile').click()">
-        <div class="icon">📂</div>
-        <strong>파일 선택 (여러 개 가능)</strong>
-        <p>총 30초 이상 권장 · 깨끗한 녹음일수록 좋아요</p>
-        <input type="file" id="trainFile" accept=".wav,.mp3,.flac,.m4a" multiple onchange="handleTrainUpload()" />
-      </div>
-    </div>
-
-    <div class="field">
-      <label>학습에 사용할 파일 선택</label>
-      <div class="file-list" id="fileList">
-        <div style="font-size:13px;color:#5050a0;text-align:center;padding:10px">업로드된 파일이 없어요</div>
-      </div>
-    </div>
-
-    <button id="trainBtn" onclick="startTrain()" class="btn-sm">🚀 RVC 학습 시작</button>
-
-    <div class="progress-wrap" id="progressWrap" style="display:none">
-      <div class="progress-bar" id="progressBar"></div>
-    </div>
-    <div class="status" id="trainStatus"></div>
-  </div>
-
-  <!-- ═══════════════ 모델 업로드 탭 ═══════════════ -->
-  <div id="tab-model" class="tab-panel">
-    <p style="font-size:13px;color:#9090b0;line-height:1.6">
-      이미 학습된 RVC 모델(.pth)과 인덱스(.index)를 직접 업로드할 수 있어요.<br/>
-      학습 탭 대신 사용하거나, 외부에서 학습한 모델을 올릴 때 써요.
+    <p style="font-size:13px;color:#9090b0;line-height:1.7">
+      목소리 복제에 사용할 내 목소리 샘플을 업로드하세요.<br/>
+      <strong style="color:#c4b5fd">6초 이상</strong> 권장 · 여러 파일을 선택하면 더 정확해요 · 조용한 환경 녹음 권장
     </p>
 
-    <div class="field">
-      <label>모델 파일 (.pth)</label>
-      <div class="upload-area" onclick="document.getElementById('pthFile').click()">
-        <div class="icon">🧠</div>
-        <strong id="pthLabel">voice.pth 선택</strong>
-        <p>RVC 학습된 .pth 파일</p>
-        <input type="file" id="pthFile" accept=".pth" onchange="uploadModel(this, 'pthLabel')" />
-      </div>
+    <div class="upload-area" onclick="document.getElementById('voiceFile').click()">
+      <div class="icon">🎤</div>
+      <strong>파일 선택 (여러 개 가능)</strong>
+      <p>wav · mp3 · flac · m4a</p>
+      <input type="file" id="voiceFile" accept=".wav,.mp3,.flac,.m4a" multiple onchange="handleUpload()" />
     </div>
 
-    <div class="field">
-      <label>인덱스 파일 (.index) <span style="color:#5050a0">선택사항</span></label>
-      <div class="upload-area" onclick="document.getElementById('idxFile').click()">
-        <div class="icon">📑</div>
-        <strong id="idxLabel">voice.index 선택</strong>
-        <p>없어도 되지만 있으면 품질이 좋아요</p>
-        <input type="file" id="idxFile" accept=".index" onchange="uploadModel(this, 'idxLabel')" />
-      </div>
+    <div class="file-list" id="voiceList">
+      <div style="font-size:13px;color:#5050a0;text-align:center;padding:10px">업로드된 파일이 없어요</div>
     </div>
 
-    <div class="status" id="modelStatus"></div>
+    <div class="status" id="voiceStatus"></div>
   </div>
 </div>
 
 <script>
-  // ── tab switch ──
+  // ── 탭 전환 ──
   function switchTab(name) {
     document.querySelectorAll('.tab').forEach((t, i) => {
-      const names = ['generate', 'train', 'model'];
-      t.classList.toggle('active', names[i] === name);
+      t.classList.toggle('active', ['generate', 'voices'][i] === name);
     });
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
-    if (name === 'generate') refreshModelStatus();
-    if (name === 'train') refreshFileList();
+    if (name === 'voices') refreshVoiceList();
+    if (name === 'generate') refreshRefList();
   }
 
-  // ── model status ──
-  async function refreshModelStatus() {
-    const res = await fetch('/model-status');
-    const data = await res.json();
-    const badge = document.getElementById('rvcBadge');
-    if (data.model_ready) {
-      badge.textContent = '준비됨';
-      badge.className = 'badge ready';
-    } else {
-      badge.textContent = '모델 없음';
-      badge.className = 'badge none';
-    }
-    // propagate training status if on train tab
-    if (data.training.status === 'running') {
-      setStatus('trainStatus', data.training.message, '');
+  // ── 모델 상태 폴링 ──
+  async function pollModelStatus() {
+    try {
+      const res = await fetch('/model-status');
+      const data = await res.json();
+      const badge = document.getElementById('modelBadge');
+
+      if (data.status === 'ready') {
+        badge.textContent = '준비 완료';
+        badge.className = 'badge ready';
+        document.getElementById('generateBtn').disabled = false;
+      } else if (data.status === 'error') {
+        badge.textContent = '오류';
+        badge.className = 'badge error';
+        badge.title = data.message;
+      } else {
+        badge.textContent = '로딩 중...';
+        badge.className = 'badge loading';
+        document.getElementById('generateBtn').disabled = true;
+        setTimeout(pollModelStatus, 3000);
+      }
+    } catch {
+      setTimeout(pollModelStatus, 5000);
     }
   }
 
-  // ── voice file list ──
-  async function refreshFileList() {
+  // ── 참조 오디오 목록 (생성 탭) ──
+  async function refreshRefList() {
     const res = await fetch('/voices');
     const data = await res.json();
-    const el = document.getElementById('fileList');
+    const el = document.getElementById('refList');
+    if (!data.voices.length) {
+      el.innerHTML = '<div style="font-size:13px;color:#5050a0;text-align:center;padding:10px">참조 오디오 없음 — 오디오 탭에서 업로드하세요</div>';
+      return;
+    }
+    el.innerHTML = data.voices.map(v => `
+      <label class="file-item">
+        <input type="checkbox" class="ref-file" value="${v}" checked />
+        <span title="${v}">${v}</span>
+      </label>`).join('');
+  }
+
+  // ── 참조 오디오 목록 (오디오 탭) ──
+  async function refreshVoiceList() {
+    const res = await fetch('/voices');
+    const data = await res.json();
+    const el = document.getElementById('voiceList');
     if (!data.voices.length) {
       el.innerHTML = '<div style="font-size:13px;color:#5050a0;text-align:center;padding:10px">업로드된 파일이 없어요</div>';
       return;
     }
     el.innerHTML = data.voices.map(v => `
-      <label class="file-item">
-        <input type="checkbox" class="train-file" value="${v}" checked />
-        <span>${v}</span>
-      </label>`).join('');
+      <div class="file-item">
+        <span title="${v}">${v}</span>
+        <button class="del-btn" onclick="deleteVoice('${v}')" title="삭제">✕</button>
+      </div>`).join('');
   }
 
-  // ── train file upload ──
-  async function handleTrainUpload() {
-    const files = document.getElementById('trainFile').files;
+  // ── 업로드 ──
+  async function handleUpload() {
+    const files = document.getElementById('voiceFile').files;
     if (!files.length) return;
-
-    setStatus('trainStatus', '업로드 중...', '');
+    setStatus('voiceStatus', '업로드 중...', '');
     for (const file of files) {
       const form = new FormData();
       form.append('file', file);
       const res = await fetch('/upload-voice', { method: 'POST', body: form });
       if (!res.ok) {
         const e = await res.json();
-        setStatus('trainStatus', e.detail || '업로드 실패', 'error');
+        setStatus('voiceStatus', e.detail || '업로드 실패', 'error');
         return;
       }
     }
-    setStatus('trainStatus', '업로드 완료!', 'success');
-    await refreshFileList();
+    setStatus('voiceStatus', `${files.length}개 업로드 완료!`, 'success');
+    refreshVoiceList();
+    refreshRefList();
   }
 
-  // ── model upload ──
-  async function uploadModel(input, labelId) {
-    const file = input.files[0];
-    if (!file) return;
-    document.getElementById(labelId).textContent = file.name;
-    setStatus('modelStatus', '업로드 중...', '');
-    const form = new FormData();
-    form.append('file', file);
-    const res = await fetch('/upload-model', { method: 'POST', body: form });
+  // ── 삭제 ──
+  async function deleteVoice(filename) {
+    const res = await fetch(`/voices/${encodeURIComponent(filename)}`, { method: 'DELETE' });
     if (res.ok) {
-      setStatus('modelStatus', '업로드 완료!', 'success');
-      refreshModelStatus();
+      refreshVoiceList();
+      refreshRefList();
     } else {
       const e = await res.json();
-      setStatus('modelStatus', e.detail || '실패', 'error');
+      setStatus('voiceStatus', e.detail || '삭제 실패', 'error');
     }
   }
 
-  // ── start training ──
-  async function startTrain() {
-    const checked = [...document.querySelectorAll('.train-file:checked')].map(c => c.value);
-    if (!checked.length) {
-      setStatus('trainStatus', '학습할 파일을 선택해주세요.', 'error');
-      return;
-    }
-    const btn = document.getElementById('trainBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span>학습 중...';
-    document.getElementById('progressWrap').style.display = 'block';
-    animateProgress();
-
-    const form = new FormData();
-    form.append('voice_files', JSON.stringify(checked));
-    const res = await fetch('/train', { method: 'POST', body: form });
-    if (!res.ok) {
-      const e = await res.json();
-      setStatus('trainStatus', e.detail || '학습 실패', 'error');
-      btn.disabled = false;
-      btn.textContent = '🚀 RVC 학습 시작';
-      return;
-    }
-    pollTraining();
-  }
-
-  function animateProgress() {
-    const bar = document.getElementById('progressBar');
-    let pct = 0;
-    const iv = setInterval(() => {
-      if (pct >= 90) { clearInterval(iv); return; }
-      pct += Math.random() * 3;
-      bar.style.width = Math.min(pct, 90) + '%';
-    }, 800);
-  }
-
-  async function pollTraining() {
-    const res = await fetch('/model-status');
-    const data = await res.json();
-    const t = data.training;
-    setStatus('trainStatus', t.message, t.status === 'error' ? 'error' : t.status === 'done' ? 'success' : '');
-
-    if (t.status === 'running') {
-      setTimeout(pollTraining, 3000);
-    } else {
-      document.getElementById('progressBar').style.width = '100%';
-      const btn = document.getElementById('trainBtn');
-      btn.disabled = false;
-      btn.textContent = '🚀 RVC 학습 시작';
-      if (t.status === 'done') refreshModelStatus();
-    }
-  }
-
-  // ── generate ──
+  // ── 음성 생성 ──
   async function generate() {
     const text = document.getElementById('textInput').value.trim();
     if (!text) return setStatus('genStatus', '텍스트를 입력해주세요.', 'error');
+
+    const refs = [...document.querySelectorAll('.ref-file:checked')].map(c => c.value);
+    if (!refs.length) return setStatus('genStatus', '참조 오디오를 하나 이상 선택해주세요.', 'error');
 
     const btn = document.getElementById('generateBtn');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span>생성 중...';
     document.getElementById('result').style.display = 'none';
-    setStatus('genStatus', '음성을 생성하고 있어요...', '');
+    setStatus('genStatus', 'XTTS v2 추론 중...', '');
 
     const form = new FormData();
     form.append('text', text);
-    form.append('voice', document.getElementById('voiceSelect').value);
+    form.append('ref_audios', JSON.stringify(refs));
     form.append('speed', document.getElementById('speed').value);
-    form.append('use_rvc', document.getElementById('useRvc').checked);
-    form.append('f0_key', document.getElementById('f0Key').value);
 
     try {
       const res = await fetch('/generate', { method: 'POST', body: form });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.detail || '생성 실패'); }
+      if (!res.ok) {
+        const e = await res.json();
+        throw new Error(e.detail || '생성 실패');
+      }
       const data = await res.json();
       const url = `/download/${data.output}`;
       document.getElementById('audioPlayer').src = url;
@@ -474,6 +376,7 @@
     } finally {
       btn.disabled = false;
       btn.textContent = '음성 생성하기';
+      pollModelStatus(); // 상태 재확인
     }
   }
 
@@ -483,9 +386,9 @@
     el.className = 'status ' + (type || '');
   }
 
-  // init
-  refreshModelStatus();
-  refreshFileList();
+  // 초기화
+  pollModelStatus();
+  refreshRefList();
 </script>
 </body>
 </html>
