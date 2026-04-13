@@ -24,14 +24,32 @@ _model_status = {"status": "loading", "message": "XTTS v2 로딩 중..."}
 def _load_model():
     global _xtts, _model_status
     try:
-        _model_status = {"status": "loading", "message": "XTTS v2 로딩 중... (첫 실행 시 ~1.8GB 다운로드)"}
+        _model_status = {"status": "loading", "message": "XTTS v2 로딩 중..."}
         import os
         os.environ["COQUI_TOS_AGREED"] = "1"
         import torch
-        from TTS.api import TTS
+        from TTS.tts.configs.xtts_config import XttsConfig
+        from TTS.tts.models.xtts import Xtts
+
+        tts_home = os.environ.get("TTS_HOME", os.path.expanduser("~/.local/share/tts"))
+        model_dir = os.path.join(tts_home, "tts", "tts_models--multilingual--multi-dataset--xtts_v2")
+
+        # 모델 없으면 다운로드
+        if not os.path.exists(os.path.join(model_dir, "model.pth")):
+            _model_status = {"status": "loading", "message": "XTTS v2 다운로드 중... (~1.8GB)"}
+            from TTS.api import TTS
+            TTS("tts_models/multilingual/multi-dataset/xtts_v2")
+
+        config = XttsConfig()
+        config.load_json(os.path.join(model_dir, "config.json"))
+        model = Xtts.init_from_config(config)
+        model.load_checkpoint(config, checkpoint_dir=model_dir)
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        _xtts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+        model.to(device)
+        model.eval()
+
+        _xtts = model
         _model_status = {"status": "ready", "message": "준비 완료"}
     except Exception as e:
         _model_status = {"status": "error", "message": str(e)}
@@ -51,26 +69,42 @@ def _generate_sync(text: str, ref_paths: list[str], speed: float) -> tuple[np.nd
     if _xtts is None:
         raise RuntimeError(_model_status.get("message", "모델이 아직 로딩 중이에요."))
 
-    tmp_out = OUTPUTS_DIR / f"_tmp_{uuid.uuid4().hex}.wav"
-    try:
-        _xtts.tts_to_file(
-            text=text,
-            speaker_wav=ref_paths,
-            language="ko",
-            file_path=str(tmp_out),
-        )
-        audio, sr = sf.read(str(tmp_out), dtype="float32")
-    finally:
-        tmp_out.unlink(missing_ok=True)
+    import librosa
 
-    # 속도 조절 (재샘플링 방식)
+    # 참조 오디오에서 화자 임베딩 추출
+    gpt_cond_latent, speaker_embedding = _xtts.get_conditioning_latents(
+        audio_path=ref_paths,
+        gpt_cond_len=30,
+        max_ref_length=60,
+    )
+
+    # 한국어로 직접 추론
+    out = _xtts.inference(
+        text=text,
+        language="ko",
+        gpt_cond_latent=gpt_cond_latent,
+        speaker_embedding=speaker_embedding,
+        temperature=0.85,
+        repetition_penalty=10.0,
+        top_k=50,
+        top_p=0.85,
+        enable_text_splitting=True,
+    )
+
+    audio = np.array(out["wav"], dtype=np.float32)
+    sr = 24000  # XTTS v2 출력 샘플레이트
+
+    # 끝부분 노이즈·무음만 제거 (앞은 건드리지 않음)
+    _, trim_idx = librosa.effects.trim(audio, top_db=25, frame_length=2048, hop_length=512)
+    audio = audio[:trim_idx[1]]
+    # 끝 0.1초 fade-out
+    fade_len = int(sr * 0.1)
+    if len(audio) > fade_len:
+        audio[-fade_len:] *= np.linspace(1.0, 0.0, fade_len, dtype=np.float32)
+
+    # 속도 조절 (pitch 보존 time-stretch)
     if abs(speed - 1.0) > 0.01:
-        target_len = int(len(audio) / speed)
-        audio = np.interp(
-            np.linspace(0, len(audio) - 1, target_len),
-            np.arange(len(audio)),
-            audio,
-        ).astype(np.float32)
+        audio = librosa.effects.time_stretch(audio, rate=speed)
 
     return audio, sr
 
