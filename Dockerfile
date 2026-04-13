@@ -1,5 +1,5 @@
 # PyTorch 공식 이미지 — Python 3.10 + CUDA 12.1 + torch 2.3.1 포함
-FROM pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
