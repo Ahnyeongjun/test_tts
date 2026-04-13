@@ -25,6 +25,8 @@ def _load_model():
     global _xtts, _model_status
     try:
         _model_status = {"status": "loading", "message": "XTTS v2 로딩 중... (첫 실행 시 ~1.8GB 다운로드)"}
+        import os
+        os.environ["COQUI_TOS_AGREED"] = "1"
         import torch
         from TTS.api import TTS
 
